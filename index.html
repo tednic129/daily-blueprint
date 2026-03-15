@@ -89,9 +89,64 @@
     "Remember why you started. Now remember what quitting feels like.",
   ];
 
-  const PUSH_EX = ["Flat Bench Press 4\u00D78\u201310","Incline DB Press 3\u00D710\u201312","Overhead Press 3\u00D78\u201310","Cable Lateral Raises 3\u00D712\u201315","Tricep Pushdowns 3\u00D712\u201315","OH Tricep Extension 2\u00D712\u201315"];
-  const PULL_EX = ["Lat Pulldowns 4\u00D78\u201310","Seated Cable Rows 3\u00D710\u201312","DB Rows 3\u00D710\u201312","Face Pulls 3\u00D715\u201320","Barbell Curls 3\u00D710\u201312","Hammer Curls 2\u00D712\u201315"];
-  const LEG_EX = ["Barbell Squats 4\u00D78\u201310","Romanian Deadlifts 3\u00D710\u201312","Leg Press 3\u00D710\u201312","Walking Lunges 3\u00D712/leg","Leg Curls 3\u00D712\u201315","Calf Raises 4\u00D715\u201320"];
+  const WORKOUTS = {
+    Push: {
+      muscles: ["Chest", "Shoulders", "Triceps", "Core"],
+      exercises: [
+        { name: "Treadmill Warm-Up", duration: "15 min", category: "warmup" },
+        { name: "Bench Press", category: "chest" },
+        { name: "Incline Bench Press", category: "chest" },
+        { name: "Fly Delt", category: "chest" },
+        { name: "Shoulder Press", category: "shoulders" },
+        { name: "Lateral Raises", category: "shoulders" },
+        { name: "DB Chest Press", category: "chest" },
+        { name: "Arm Extensions", category: "triceps" },
+        { name: "Tricep Rope Pull", category: "triceps" },
+        { name: "Stretching", category: "recovery" },
+        { name: "Plank", duration: "1:05 min", category: "core" },
+      ]
+    },
+    Pull: {
+      muscles: ["Back", "Biceps", "Rear Delts", "Core"],
+      exercises: [
+        { name: "Treadmill Warm-Up", duration: "15 min", category: "warmup" },
+        { name: "Pull-Ups", category: "back" },
+        { name: "Lat Pull Down", category: "back" },
+        { name: "Row Wide", category: "back" },
+        { name: "Face Pull Rope", category: "rear delts" },
+        { name: "Bicep S-Bar Curl", category: "biceps" },
+        { name: "Back Extension", category: "back" },
+        { name: "Stretching", category: "recovery" },
+        { name: "Plank", duration: "1:05 min", category: "core" },
+      ]
+    },
+    Legs: {
+      muscles: ["Quads", "Hamstrings", "Glutes", "Calves", "Core"],
+      exercises: [
+        { name: "Treadmill Warm-Up", duration: "15 min", category: "warmup" },
+        { name: "Leg Press", category: "quads" },
+        { name: "Squats", category: "quads" },
+        { name: "Calf Raise", category: "calves" },
+        { name: "Leg Extension", category: "quads" },
+        { name: "Leg Curls", category: "hamstrings" },
+        { name: "Stretching", category: "recovery" },
+        { name: "Plank", duration: "1:05 min", category: "core" },
+      ]
+    },
+    Run: {
+      muscles: ["Cardio", "Endurance"],
+      exercises: [
+        { name: "Outdoor Run", duration: "30\u201345 min", category: "cardio" },
+      ]
+    }
+  };
+
+  const CAT_COLORS = {
+    warmup:"#e67e22",chest:"#e74c3c",shoulders:"#9b59b6",triceps:"#8e44ad",
+    back:"#2980b9",biceps:"#3498db","rear delts":"#1abc9c",quads:"#27ae60",
+    hamstrings:"#2ecc71",glutes:"#16a085",calves:"#1abc9c",core:"#f39c12",
+    recovery:"#95a5a6",cardio:"#e74c3c",
+  };
 
   const DEFAULT_DAY = () => ({
     date: new Date().toISOString().split("T")[0],
@@ -434,10 +489,10 @@
       if (day.activeMode === "gym") {
         modeContent.push(React.createElement("div", {key:"gt",className:"card",style:cardStyle},
           React.createElement("p", {style:sectionTitle(COLORS.red)}, "Workout Type"),
-          React.createElement("div", {style:{display:"flex",gap:8}},
-            ["Push","Pull","Legs","Run"].map(type =>
-              React.createElement("button", {key:type, onClick:()=>saveDay({...day,gym:{...day.gym,type,exercises:type==="Push"?PUSH_EX.map(e=>({name:e,done:false})):type==="Pull"?PULL_EX.map(e=>({name:e,done:false})):type==="Legs"?LEG_EX.map(e=>({name:e,done:false})):[]}}),style:{
-                flex:1,padding:"10px 4px",borderRadius:10,border:"none",cursor:"pointer",
+          React.createElement("div", {style:{display:"flex",gap:8,flexWrap:"wrap"}},
+            Object.keys(WORKOUTS).map(type =>
+              React.createElement("button", {key:type, onClick:()=>saveDay({...day,gym:{...day.gym,type,exercises:WORKOUTS[type].exercises.map(e=>({name:e.name,done:false,duration:e.duration||"",category:e.category}))}}),style:{
+                flex:1,minWidth:70,padding:"10px 4px",borderRadius:10,border:"none",cursor:"pointer",
                 background:day.gym.type===type?COLORS.red:COLORS.grayBg,
                 color:day.gym.type===type?COLORS.white:COLORS.dark,
                 fontWeight:700,fontSize:13,transition:"all 0.2s"
@@ -446,25 +501,32 @@
           )
         ));
 
-        if (day.gym.type && day.gym.type !== "Run") {
+        if (day.gym.type && WORKOUTS[day.gym.type]) {
+          const muscleTagEls = WORKOUTS[day.gym.type].muscles.map(m =>
+            React.createElement("span", {key:m,style:{display:"inline-block",padding:"3px 10px",borderRadius:20,fontSize:11,fontWeight:700,background:COLORS.red+"15",color:COLORS.red,letterSpacing:0.5}}, m)
+          );
+          const exerciseEls = day.gym.exercises.map((ex,i) => {
+            const subParts = [ex.duration, ex.category!=="warmup"&&ex.category!=="recovery"&&ex.category!=="core"?ex.category:""].filter(Boolean);
+            return React.createElement(CheckItem, {key:i,checked:ex.done,label:ex.name,
+              sub:subParts.length?subParts.join(" \u00B7 "):undefined,
+              onToggle:()=>{
+                const exs=[...day.gym.exercises]; exs[i]={...exs[i],done:!exs[i].done};
+                const allDone=exs.every(e=>e.done);
+                saveDay({...day,gym:{...day.gym,exercises:exs,completed:allDone}});
+                if(!ex.done) triggerConfetti();
+              },color:CAT_COLORS[ex.category]||COLORS.red});
+          });
           modeContent.push(React.createElement("div", {key:"gex",className:"card",style:cardStyle},
             React.createElement("p", {style:sectionTitle(COLORS.red)}, "Exercises \u2014 "+day.gym.type+" Day"),
-            day.gym.exercises.map((ex,i) =>
-              React.createElement(CheckItem, {key:i,checked:ex.done,label:ex.name,
-                onToggle:()=>{
-                  const exs=[...day.gym.exercises]; exs[i]={...exs[i],done:!exs[i].done};
-                  const allDone=exs.every(e=>e.done);
-                  saveDay({...day,gym:{...day.gym,exercises:exs,completed:allDone}});
-                  if(!ex.done) triggerConfetti();
-                },color:COLORS.red})
-            )
+            React.createElement("div", {style:{display:"flex",gap:6,flexWrap:"wrap",marginBottom:14}}, ...muscleTagEls),
+            ...exerciseEls
           ));
         }
 
         modeContent.push(React.createElement("div", {key:"gc",className:"card",style:cardStyle},
           React.createElement("p", {style:sectionTitle(COLORS.red)}, "Cardio Finisher"),
           React.createElement(CheckItem, {checked:day.gym.cardio,label:"Cardio completed",
-            sub:day.gym.type==="Run"?"30\u201345 min city run":"10\u201315 min incline walk or HIIT",
+            sub:day.gym.type==="Run"?"30\u201345 min outdoor run":"Treadmill warm-up counts \u2014 check if extra cardio done",
             onToggle:()=>{
               const nc=!day.gym.cardio;
               const completed=day.gym.type==="Run"?nc:(day.gym.exercises.every(e=>e.done)&&nc);

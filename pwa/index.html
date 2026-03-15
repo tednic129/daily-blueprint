@@ -1,0 +1,602 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#355c5c" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Blueprint" />
+  <meta name="description" content="Tapan's Daily Blueprint — Science-backed daily tracking for body recomposition." />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="apple-touch-icon" href="icons/icon-192x192.png" />
+  <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192x192.png" />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@700&display=swap" rel="stylesheet" />
+  <title>Tapan's Daily Blueprint</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body, #root { height: 100%; width: 100%; overflow-x: hidden; }
+    body {
+      font-family: 'DM Sans', 'Segoe UI', sans-serif;
+      background: #f7f5f0;
+      -webkit-font-smoothing: antialiased;
+      -webkit-tap-highlight-color: transparent;
+      overscroll-behavior-y: contain;
+    }
+    input, textarea, button { font-family: inherit; }
+    input:focus, textarea:focus { border-color: #355c5c !important; outline: none; }
+    @keyframes confettiFall { 0% { transform: translateY(0) rotate(0deg); opacity: 1; } 100% { transform: translateY(100vh) rotate(720deg); opacity: 0; } }
+    @keyframes pulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.15); } }
+    @keyframes slideUp { 0% { transform: translateY(20px); opacity: 0; } 100% { transform: translateY(0); opacity: 1; } }
+    @keyframes fadeIn { 0% { opacity: 0; } 100% { opacity: 1; } }
+    .card { animation: slideUp 0.3s ease-out; }
+    ::-webkit-scrollbar { width: 0; }
+    input[type="number"]::-webkit-inner-spin-button,
+    input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+    input[type="number"] { -moz-appearance: textfield; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+
+  <script>
+  // ─── Service Worker Registration ───
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('sw.js').then(r => console.log('SW registered')).catch(e => console.log('SW failed', e));
+    });
+  }
+
+  const { useState, useEffect, useCallback, useRef } = React;
+
+  // ─── STORAGE (localStorage for PWA) ───
+  const Storage = {
+    get(key) { try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : null; } catch(e) { return null; } },
+    set(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); return true; } catch(e) { return false; } },
+    list(prefix) { const keys = []; for(let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if(k.startsWith(prefix)) keys.push(k); } return keys.sort(); }
+  };
+
+  // ─── CONSTANTS ───
+  const COLORS = {
+    teal: "#355c5c", tealDark: "#2a4a4a", tealLight: "#4a7a7a",
+    amber: "#ffac00", amberDark: "#e09800", amberLight: "#ffc940",
+    red: "#d9472b", redDark: "#b83a24", redLight: "#e8654d",
+    white: "#ffffff", offWhite: "#f7f5f0", cream: "#faf8f3",
+    dark: "#1a1a1a", gray: "#8a8a8a", grayLight: "#d0d0d0", grayBg: "#f0eeea",
+  };
+
+  const MODES = {
+    wake: { id: "wake", label: "Rise", icon: "\u2600\uFE0F", time: "06:30\u201308:00", color: COLORS.amber, desc: "Light \u00B7 Hydration \u00B7 Breathing" },
+    work: { id: "work", label: "Work", icon: "\uD83D\uDCBC", time: "08:00\u201317:00", color: COLORS.teal, desc: "Shift Mode \u00B7 Deep Focus" },
+    study: { id: "study", label: "Study", icon: "\uD83D\uDCDA", time: "08:30\u201318:00", color: COLORS.teal, desc: "Library \u00B7 Deep Work Cycles" },
+    gym: { id: "gym", label: "Gym", icon: "\uD83D\uDD25", time: "17:30\u201319:15", color: COLORS.red, desc: "Push \u00B7 Pull \u00B7 Legs" },
+    wind: { id: "wind", label: "Wind Down", icon: "\uD83C\uDF19", time: "21:00\u201322:30", color: COLORS.tealDark, desc: "Recovery \u00B7 Sleep Prep" },
+  };
+
+  const GYM_MOTIVATIONS = [
+    "You said you'd go. Your future self is watching.",
+    "30 kg of fat won't burn itself. The couch isn't helping.",
+    "Discipline > Motivation. Shoes on. Door out. NOW.",
+    "Every session you skip, your body stores another excuse as fat.",
+    "Tired? Good. Legends train tired. Rookies skip.",
+    "Your InBody scan in 8 weeks doesn't care about your excuses.",
+    "67 kg doesn't come from Netflix. Get up.",
+    "The gym is 75 minutes. That's 5% of your day. No excuses.",
+    "Push day won't do itself. Your chest won't grow on the couch.",
+    "Remember why you started. Now remember what quitting feels like.",
+  ];
+
+  const PUSH_EX = ["Flat Bench Press 4\u00D78\u201310","Incline DB Press 3\u00D710\u201312","Overhead Press 3\u00D78\u201310","Cable Lateral Raises 3\u00D712\u201315","Tricep Pushdowns 3\u00D712\u201315","OH Tricep Extension 2\u00D712\u201315"];
+  const PULL_EX = ["Lat Pulldowns 4\u00D78\u201310","Seated Cable Rows 3\u00D710\u201312","DB Rows 3\u00D710\u201312","Face Pulls 3\u00D715\u201320","Barbell Curls 3\u00D710\u201312","Hammer Curls 2\u00D712\u201315"];
+  const LEG_EX = ["Barbell Squats 4\u00D78\u201310","Romanian Deadlifts 3\u00D710\u201312","Leg Press 3\u00D710\u201312","Walking Lunges 3\u00D712/leg","Leg Curls 3\u00D712\u201315","Calf Raises 4\u00D715\u201320"];
+
+  const DEFAULT_DAY = () => ({
+    date: new Date().toISOString().split("T")[0],
+    activeMode: null, modeStartTime: null, weight: "", waterMl: 0,
+    meals: { breakfast: {done:false,protein:""}, lunch: {done:false,protein:""}, preworkout: {done:false}, postworkout: {done:false,protein:""}, dinner: {done:false,protein:""} },
+    wake: { lightExposure:false, hydration500:false, noCaffeine90:false, morningWalk:false, breathing:false },
+    work: { screenEyeLevel:false, focusBlock1:false, focusBlock2:false, lunchWalk:false, noCaffeineAfter2:false, nsdr:false },
+    study: { ultradianCycle1:false, ultradianCycle2:false, ultradianCycle3:false, binaural40hz:false, hydration:false },
+    gym: { completed:false, type:"", exercises:[], cardio:false },
+    wind: { dimLights:false, noScreens:false, physioSighing:false, coolRoom:false, bedBy2230:false },
+    mood: 0, energy: 0, sleep: "", notes: "",
+    gymSkipAttempted: false, gymMotivationSeen: false,
+  });
+
+  // ─── MAIN APP ───
+  function App() {
+    const today = new Date().toISOString().split("T")[0];
+    const [day, setDay] = useState(() => Storage.get("day:" + today) || DEFAULT_DAY());
+    const [view, setView] = useState("home");
+    const [showMotivation, setShowMotivation] = useState(false);
+    const [motivationIndex, setMotivationIndex] = useState(0);
+    const [modeTimer, setModeTimer] = useState(0);
+    const [showConfetti, setShowConfetti] = useState(false);
+    const timerRef = useRef(null);
+
+    const saveDay = useCallback((updated) => {
+      setDay(updated);
+      Storage.set("day:" + today, updated);
+    }, [today]);
+
+    useEffect(() => {
+      if (day.activeMode) {
+        timerRef.current = setInterval(() => setModeTimer(t => t + 1), 1000);
+      } else { setModeTimer(0); }
+      return () => clearInterval(timerRef.current);
+    }, [day.activeMode]);
+
+    const totalProtein = () => {
+      return [day.meals.breakfast.protein, day.meals.lunch.protein, day.meals.postworkout.protein, day.meals.dinner.protein]
+        .reduce((s, v) => s + (parseInt(v) || 0), 0);
+    };
+
+    const completionPct = () => {
+      let done = 0, total = 0;
+      Object.values(day.wake).forEach(v => { total++; if(v) done++; });
+      Object.values(day.meals).forEach(m => { total++; if(m.done) done++; });
+      if(day.gym.completed) done++; total++;
+      Object.values(day.wind).forEach(v => { total++; if(v) done++; });
+      return total > 0 ? Math.round((done/total)*100) : 0;
+    };
+
+    const fmt = (s) => `${String(Math.floor(s/3600)).padStart(2,"0")}:${String(Math.floor((s%3600)/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`;
+
+    const enterMode = (modeId) => {
+      if (modeId === "gym" && !day.gymMotivationSeen) {
+        setMotivationIndex(Math.floor(Math.random() * GYM_MOTIVATIONS.length));
+        setShowMotivation(true);
+        saveDay({...day, gymMotivationSeen: true});
+        return;
+      }
+      setModeTimer(0);
+      saveDay({...day, activeMode: modeId, modeStartTime: Date.now()});
+      setView("mode");
+    };
+
+    const exitMode = () => { saveDay({...day, activeMode: null, modeStartTime: null}); setView("home"); };
+
+    const skipGymAttempt = () => {
+      setMotivationIndex((motivationIndex + 1) % GYM_MOTIVATIONS.length);
+      saveDay({...day, gymSkipAttempted: true});
+    };
+
+    const confirmGym = () => {
+      setShowMotivation(false);
+      setModeTimer(0);
+      saveDay({...day, activeMode: "gym", modeStartTime: Date.now(), gymMotivationSeen: true});
+      setView("mode");
+    };
+
+    const triggerConfetti = () => { setShowConfetti(true); setTimeout(() => setShowConfetti(false), 2000); };
+
+    const toggleCheck = (section, key) => {
+      const updated = {...day, [section]: {...day[section], [key]: !day[section][key]}};
+      saveDay(updated);
+      if (!day[section][key]) triggerConfetti();
+    };
+
+    const updateMeal = (meal, field, value) => {
+      const updated = {...day, meals: {...day.meals, [meal]: {...day.meals[meal], [field]: value}}};
+      saveDay(updated);
+      if (field === "done" && value) triggerConfetti();
+    };
+
+    const addWater = (ml) => saveDay({...day, waterMl: Math.max(0, day.waterMl + ml)});
+
+    const pct = completionPct();
+    const protein = totalProtein();
+
+    // ─── Components ───
+    function Confetti() {
+      if (!showConfetti) return null;
+      const ps = Array.from({length:20}, (_,i) => ({
+        left: Math.random()*100, delay: Math.random()*0.5,
+        color: [COLORS.amber, COLORS.red, COLORS.teal, COLORS.amberLight][i%4],
+        size: 6+Math.random()*6,
+      }));
+      return React.createElement("div", {style:{position:"fixed",top:0,left:0,right:0,pointerEvents:"none",zIndex:300,height:"100vh",overflow:"hidden"}},
+        ps.map((p,i) => React.createElement("div", {key:i, style:{
+          position:"absolute",left:p.left+"%",top:-10,width:p.size,height:p.size,
+          borderRadius:p.size>8?"50%":"2px",background:p.color,
+          animation:`confettiFall 1.5s ${p.delay}s ease-out forwards`
+        }}))
+      );
+    }
+
+    function CheckItem({checked, label, onToggle, color, sub}) {
+      return React.createElement("div", {
+        onClick: onToggle,
+        style: {
+          display:"flex",alignItems:"center",gap:12,padding:"12px 16px",
+          background:checked?((color||COLORS.teal)+"08"):"transparent",
+          borderRadius:10,marginBottom:6,cursor:"pointer",transition:"all 0.2s",
+          border:`1px solid ${checked?(color||COLORS.teal)+"20":"transparent"}`
+        }
+      },
+        React.createElement("div", {style:{
+          width:24,height:24,borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",
+          background:checked?(color||COLORS.teal):"transparent",
+          border:`2px solid ${checked?(color||COLORS.teal):COLORS.grayLight}`,
+          transition:"all 0.2s",flexShrink:0,color:COLORS.white,fontSize:14,fontWeight:700
+        }}, checked?"\u2713":""),
+        React.createElement("div", null,
+          React.createElement("p", {style:{fontSize:14,fontWeight:500,color:checked?(color||COLORS.teal):COLORS.dark,textDecoration:checked?"line-through":"none",opacity:checked?0.7:1,margin:0}}, label),
+          sub && React.createElement("p", {style:{fontSize:11,color:COLORS.gray,margin:"2px 0 0"}}, sub)
+        )
+      );
+    }
+
+    function MealTracker({meal, label, showProtein}) {
+      if (showProtein === undefined) showProtein = true;
+      return React.createElement("div", {style:{background:COLORS.cream,borderRadius:12,padding:14,marginBottom:10}},
+        React.createElement("div", {style:{display:"flex",alignItems:"center",justifyContent:"space-between"}},
+          React.createElement("div", {style:{display:"flex",alignItems:"center",gap:10,cursor:"pointer"}, onClick:()=>updateMeal(meal,"done",!day.meals[meal].done)},
+            React.createElement("div", {style:{
+              width:24,height:24,borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",
+              background:day.meals[meal].done?COLORS.amber:"transparent",
+              border:`2px solid ${day.meals[meal].done?COLORS.amber:COLORS.grayLight}`,
+              color:COLORS.white,fontSize:14,fontWeight:700
+            }}, day.meals[meal].done?"\u2713":""),
+            React.createElement("span", {style:{fontSize:14,fontWeight:600,color:day.meals[meal].done?COLORS.teal:COLORS.dark}}, label)
+          ),
+          showProtein && React.createElement("div", {style:{display:"flex",alignItems:"center",gap:6}},
+            React.createElement("input", {
+              style:{border:`1.5px solid ${COLORS.grayLight}`,borderRadius:10,padding:"6px 8px",fontSize:13,textAlign:"center",width:56,fontFamily:"inherit",outline:"none"},
+              type:"number",placeholder:"0",value:day.meals[meal].protein||"",
+              onChange:(e)=>updateMeal(meal,"protein",e.target.value),
+              onClick:(e)=>e.stopPropagation()
+            }),
+            React.createElement("span", {style:{fontSize:11,color:COLORS.gray,fontWeight:600}}, "g")
+          )
+        )
+      );
+    }
+
+    function ProgressBar({value, max, color}) {
+      return React.createElement("div", {style:{height:12,background:color+"20",borderRadius:6,overflow:"hidden",margin:"8px 0"}},
+        React.createElement("div", {style:{height:"100%",width:Math.min(100,(value/max)*100)+"%",borderRadius:6,background:`linear-gradient(90deg, ${color}, ${color}cc)`,transition:"width 0.4s ease"}})
+      );
+    }
+
+    function StatCard({value, unit, label, color, progress, max}) {
+      return React.createElement("div", {style:{background:COLORS.white,borderRadius:14,padding:"14px 10px",textAlign:"center",boxShadow:"0 1px 6px rgba(0,0,0,0.04)"}},
+        React.createElement("p", {style:{fontSize:22,fontWeight:800,color:color,margin:0}}, value+unit),
+        React.createElement("p", {style:{fontSize:10,color:COLORS.gray,fontWeight:600,margin:"2px 0 0",textTransform:"uppercase",letterSpacing:1}}, label),
+        progress !== undefined ? React.createElement(ProgressBar, {value:progress,max:max,color:color}) : React.createElement("div",{style:{height:12,marginTop:8}})
+      );
+    }
+
+    function WaterTracker() {
+      return React.createElement("div", {className:"card",style:{background:COLORS.white,borderRadius:16,margin:"12px 16px",padding:20,boxShadow:"0 2px 12px rgba(53,92,92,0.06)"}},
+        React.createElement("p", {style:{fontSize:11,fontWeight:800,letterSpacing:2.5,textTransform:"uppercase",color:COLORS.teal,margin:"0 0 14px",paddingBottom:8,borderBottom:`2px solid ${COLORS.teal}20`}}, "Hydration"),
+        React.createElement("div", {style:{display:"flex",gap:8,flexWrap:"wrap"}},
+          [250,500].map(ml => React.createElement("button", {key:ml,onClick:()=>addWater(ml),style:{padding:"8px 16px",borderRadius:14,background:"transparent",color:COLORS.teal,border:`2px solid ${COLORS.teal}40`,fontSize:13,fontWeight:600,cursor:"pointer"}}, "+"+ml+"ml")),
+          React.createElement("button", {onClick:()=>addWater(-250),style:{padding:"8px 16px",borderRadius:14,background:"transparent",color:COLORS.gray,border:`2px solid ${COLORS.gray}40`,fontSize:13,fontWeight:600,cursor:"pointer"}}, "\u2212250ml")
+        ),
+        React.createElement(ProgressBar, {value:day.waterMl,max:3500,color:COLORS.teal}),
+        React.createElement("p", {style:{fontSize:12,color:COLORS.gray,textAlign:"center"}}, day.waterMl+"ml / 3,500ml")
+      );
+    }
+
+    // ─── MOTIVATION OVERLAY ───
+    function MotivationOverlay() {
+      if (!showMotivation) return null;
+      return React.createElement("div", {style:{position:"fixed",inset:0,background:"rgba(0,0,0,0.92)",zIndex:200,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:32}},
+        React.createElement("div", {style:{fontSize:64,marginBottom:24,animation:"pulse 1s infinite"}}, "\uD83D\uDD25"),
+        React.createElement("p", {style:{color:COLORS.amber,fontSize:11,fontWeight:800,letterSpacing:3,textTransform:"uppercase",marginBottom:16}}, "NO EXCUSES MODE"),
+        React.createElement("p", {style:{color:COLORS.white,fontSize:22,fontWeight:700,textAlign:"center",lineHeight:1.5,maxWidth:320,marginBottom:40}}, GYM_MOTIVATIONS[motivationIndex]),
+        React.createElement("button", {style:{padding:"14px 32px",borderRadius:14,background:COLORS.red,color:COLORS.white,border:"none",fontSize:18,fontWeight:700,cursor:"pointer",boxShadow:`0 4px 16px ${COLORS.red}40`,width:"100%",maxWidth:300,marginBottom:16},onClick:confirmGym}, "\uD83D\uDCAA I'M GOING. LET'S DO THIS."),
+        !day.gymSkipAttempted
+          ? React.createElement("button", {style:{padding:"12px 24px",borderRadius:14,background:"transparent",color:COLORS.gray,border:`2px solid ${COLORS.gray}40`,fontSize:14,fontWeight:600,cursor:"pointer",maxWidth:300},onClick:skipGymAttempt}, "I want to skip today...")
+          : React.createElement("div", {style:{textAlign:"center",maxWidth:300}},
+              React.createElement("p", {style:{color:COLORS.red,fontSize:14,fontWeight:700,marginBottom:12}}, "You already tried to skip. Not today."),
+              React.createElement("p", {style:{color:COLORS.gray,fontSize:13,lineHeight:1.6}}, "Your body is 96.8 kg. Target is 67 kg. That's 29.7 kg of fat. Every skipped session is a vote for staying where you are."),
+              React.createElement("button", {style:{padding:"14px 32px",borderRadius:14,background:COLORS.red,color:COLORS.white,border:"none",fontSize:18,fontWeight:700,cursor:"pointer",width:"100%",marginTop:20},onClick:confirmGym}, "FINE. LET'S GO. \uD83D\uDD25")
+            ),
+        React.createElement("button", {style:{position:"absolute",top:16,right:16,background:"none",border:"none",color:COLORS.gray,fontSize:24,cursor:"pointer"},onClick:()=>setShowMotivation(false)}, "\u00D7")
+      );
+    }
+
+    // ─── HOME VIEW ───
+    function HomeView() {
+      return React.createElement("div", null,
+        // Header
+        React.createElement("div", {style:{background:COLORS.teal,padding:"20px 20px 16px",paddingTop:"calc(20px + env(safe-area-inset-top, 0px))"}},
+          React.createElement("p", {style:{color:COLORS.white,fontSize:13,fontWeight:700,letterSpacing:3,textTransform:"uppercase",margin:0,opacity:0.7}}, "Daily Blueprint"),
+          React.createElement("p", {style:{color:COLORS.white,fontSize:22,fontWeight:700,margin:"4px 0 0"}}, new Date().toLocaleDateString("en-DE",{weekday:"long",month:"long",day:"numeric"})),
+          React.createElement("div", {style:{display:"flex",alignItems:"center",gap:10,marginTop:12}},
+            React.createElement("div", {style:{flex:1,height:4,background:"rgba(255,255,255,0.15)",borderRadius:2}},
+              React.createElement("div", {style:{height:"100%",width:pct+"%",borderRadius:2,background:COLORS.amber,transition:"width 0.5s ease"}})
+            ),
+            React.createElement("span", {style:{color:COLORS.white,fontSize:13,fontWeight:700,minWidth:36}}, pct+"%")
+          )
+        ),
+        // Stats
+        React.createElement("div", {style:{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,padding:"14px 16px 0"}},
+          React.createElement(StatCard, {value:protein,unit:"g",label:"Protein",color:protein>=130?COLORS.teal:COLORS.amber,progress:protein,max:130}),
+          React.createElement(StatCard, {value:(day.waterMl/1000).toFixed(1),unit:"L",label:"Water",color:day.waterMl>=3000?COLORS.teal:COLORS.tealLight,progress:day.waterMl,max:3500}),
+          React.createElement(StatCard, {value:day.gym.completed?"\u2713":"\u2014",unit:"",label:"Gym",color:day.gym.completed?COLORS.teal:COLORS.gray})
+        ),
+        // Mode Selector
+        React.createElement("div", {className:"card",style:{background:COLORS.white,borderRadius:16,margin:"12px 16px",padding:20,boxShadow:"0 2px 12px rgba(53,92,92,0.06)"}},
+          React.createElement("p", {style:{fontSize:11,fontWeight:800,letterSpacing:2.5,textTransform:"uppercase",color:COLORS.teal,margin:"0 0 14px",paddingBottom:8,borderBottom:`2px solid ${COLORS.teal}20`}}, "Enter A Mode"),
+          React.createElement("div", {style:{display:"flex",flexDirection:"column",gap:10}},
+            Object.values(MODES).map(mode => {
+              const active = day.activeMode === mode.id;
+              return React.createElement("button", {key:mode.id, onClick:()=>enterMode(mode.id), style:{
+                display:"flex",alignItems:"center",gap:12,padding:"16px 18px",
+                background:active?mode.color:COLORS.white,borderRadius:14,
+                border:active?"none":`2px solid ${COLORS.grayLight}`,
+                cursor:"pointer",transition:"all 0.2s",width:"100%",textAlign:"left",
+                boxShadow:active?`0 4px 20px ${mode.color}40`:"0 1px 4px rgba(0,0,0,0.04)",
+              }},
+                React.createElement("span", {style:{fontSize:28}}, mode.icon),
+                React.createElement("div", {style:{flex:1}},
+                  React.createElement("p", {style:{fontSize:16,fontWeight:700,color:active?COLORS.white:mode.color,margin:0}}, mode.label),
+                  React.createElement("p", {style:{fontSize:12,color:active?"rgba(255,255,255,0.7)":COLORS.gray,margin:0}}, mode.time+" \u00B7 "+mode.desc)
+                ),
+                React.createElement("span", {style:{fontSize:18,color:active?"rgba(255,255,255,0.5)":COLORS.grayLight}}, "\u2192")
+              );
+            })
+          )
+        ),
+        // Weight
+        React.createElement("div", {className:"card",style:{background:COLORS.white,borderRadius:16,margin:"12px 16px",padding:20,boxShadow:"0 2px 12px rgba(53,92,92,0.06)"}},
+          React.createElement("p", {style:{fontSize:11,fontWeight:800,letterSpacing:2.5,textTransform:"uppercase",color:COLORS.amber,margin:"0 0 14px",paddingBottom:8,borderBottom:`2px solid ${COLORS.amber}20`}}, "Daily Weight"),
+          React.createElement("div", {style:{display:"flex",alignItems:"center",gap:10}},
+            React.createElement("input", {style:{border:`1.5px solid ${COLORS.grayLight}`,borderRadius:10,padding:"10px 14px",fontSize:14,fontFamily:"inherit",outline:"none",width:"100%",boxSizing:"border-box"},type:"number",step:"0.1",placeholder:"e.g., 96.5",value:day.weight,onChange:e=>saveDay({...day,weight:e.target.value})}),
+            React.createElement("span", {style:{fontWeight:700,color:COLORS.teal}}, "kg")
+          ),
+          day.weight && React.createElement("p", {style:{fontSize:12,color:COLORS.gray,marginTop:6}}, (parseFloat(day.weight)-67).toFixed(1)+" kg to go \u2192 target 67 kg")
+        ),
+        // Notes
+        React.createElement("div", {className:"card",style:{background:COLORS.white,borderRadius:16,margin:"12px 16px",padding:20,boxShadow:"0 2px 12px rgba(53,92,92,0.06)",marginBottom:80}},
+          React.createElement("p", {style:{fontSize:11,fontWeight:800,letterSpacing:2.5,textTransform:"uppercase",color:COLORS.gray,margin:"0 0 14px",paddingBottom:8,borderBottom:`2px solid ${COLORS.gray}20`}}, "Notes"),
+          React.createElement("textarea", {style:{border:`1.5px solid ${COLORS.grayLight}`,borderRadius:10,padding:"10px 14px",fontSize:14,fontFamily:"inherit",outline:"none",width:"100%",boxSizing:"border-box",minHeight:60,resize:"vertical"},placeholder:"How was today? Any wins or struggles?",value:day.notes,onChange:e=>saveDay({...day,notes:e.target.value})})
+        )
+      );
+    }
+
+    // ─── MODE VIEW ───
+    function ModeView() {
+      const mode = MODES[day.activeMode];
+      if (!mode) return null;
+
+      const sectionTitle = (color) => ({fontSize:11,fontWeight:800,letterSpacing:2.5,textTransform:"uppercase",color:color,margin:"0 0 14px",paddingBottom:8,borderBottom:`2px solid ${color}20`});
+      const cardStyle = {background:COLORS.white,borderRadius:16,margin:"12px 16px",padding:20,boxShadow:"0 2px 12px rgba(53,92,92,0.06)"};
+
+      const modeContent = [];
+
+      // Header
+      modeContent.push(React.createElement("div", {key:"mh",style:{background:mode.color,padding:"24px 20px 20px",paddingTop:"calc(24px + env(safe-area-inset-top, 0px))"}},
+        React.createElement("button", {onClick:exitMode,style:{background:"rgba(255,255,255,0.15)",border:"none",color:COLORS.white,borderRadius:10,padding:"8px 16px",fontSize:13,fontWeight:600,cursor:"pointer"}}, "\u2190 Exit Mode"),
+        React.createElement("div", {style:{textAlign:"center",marginTop:8}},
+          React.createElement("span", {style:{fontSize:40}}, mode.icon),
+          React.createElement("p", {style:{color:COLORS.white,fontSize:20,fontWeight:800,margin:"4px 0 0",letterSpacing:1}}, mode.label+" Mode"),
+          React.createElement("p", {style:{fontFamily:"'JetBrains Mono',monospace",fontSize:36,fontWeight:700,color:COLORS.white,textAlign:"center",margin:"8px 0 0",letterSpacing:2}}, fmt(modeTimer))
+        )
+      ));
+
+      if (day.activeMode === "wake") {
+        modeContent.push(React.createElement("div", {key:"wk",className:"card",style:cardStyle},
+          React.createElement("p", {style:sectionTitle(COLORS.amber)}, "Morning Protocol"),
+          React.createElement(CheckItem, {checked:day.wake.lightExposure,label:"Sunlight exposure (5\u201315 min)",sub:"Step outside, look toward the sun (don't stare)",onToggle:()=>toggleCheck("wake","lightExposure"),color:COLORS.amber}),
+          React.createElement(CheckItem, {checked:day.wake.hydration500,label:"500ml water + sea salt",sub:"Electrolytes kickstart hydration",onToggle:()=>toggleCheck("wake","hydration500"),color:COLORS.amber}),
+          React.createElement(CheckItem, {checked:day.wake.noCaffeine90,label:"No caffeine (wait until 08:00+)",sub:"90\u2013120 min after waking",onToggle:()=>toggleCheck("wake","noCaffeine90"),color:COLORS.amber}),
+          React.createElement(CheckItem, {checked:day.wake.morningWalk,label:"Morning walk (10\u201315 min)",sub:"Optic flow reduces stress all day",onToggle:()=>toggleCheck("wake","morningWalk"),color:COLORS.amber}),
+          React.createElement(CheckItem, {checked:day.wake.breathing,label:"Cyclic hyperventilation (2\u20133 min)",sub:"25 breaths \u2192 exhale + hold \u2192 repeat",onToggle:()=>toggleCheck("wake","breathing"),color:COLORS.amber}),
+          React.createElement("div", {style:{marginTop:16}},
+            React.createElement("p", {style:sectionTitle(COLORS.amber)}, "Breakfast"),
+            React.createElement(MealTracker, {meal:"breakfast",label:"Breakfast (Target: 35\u201340g protein)"})
+          )
+        ));
+      }
+
+      if (day.activeMode === "work") {
+        modeContent.push(React.createElement("div", {key:"wo",className:"card",style:cardStyle},
+          React.createElement("p", {style:sectionTitle(COLORS.teal)}, "Work Mode Checklist"),
+          React.createElement(CheckItem, {checked:day.work.screenEyeLevel,label:"Screen at eye level",sub:"Increases alertness",onToggle:()=>toggleCheck("work","screenEyeLevel"),color:COLORS.teal}),
+          React.createElement(CheckItem, {checked:day.work.focusBlock1,label:"Focus block #1 (90 min)",sub:"Deep work session",onToggle:()=>toggleCheck("work","focusBlock1"),color:COLORS.teal}),
+          React.createElement(CheckItem, {checked:day.work.focusBlock2,label:"Focus block #2 (90 min)",sub:"Second deep work session",onToggle:()=>toggleCheck("work","focusBlock2"),color:COLORS.teal}),
+          React.createElement(CheckItem, {checked:day.work.lunchWalk,label:"Post-lunch walk (5\u201310 min)",sub:"Blood sugar + circadian calibration",onToggle:()=>toggleCheck("work","lunchWalk"),color:COLORS.teal}),
+          React.createElement(CheckItem, {checked:day.work.noCaffeineAfter2,label:"No caffeine after 14:00",sub:"Protects tonight's sleep",onToggle:()=>toggleCheck("work","noCaffeineAfter2"),color:COLORS.teal}),
+          React.createElement(CheckItem, {checked:day.work.nsdr,label:"NSDR / afternoon recharge",sub:"10-min body scan if energy dips",onToggle:()=>toggleCheck("work","nsdr"),color:COLORS.teal})
+        ));
+        modeContent.push(React.createElement("div", {key:"wom",className:"card",style:cardStyle},
+          React.createElement("p", {style:sectionTitle(COLORS.amber)}, "Meals"),
+          React.createElement(MealTracker, {meal:"lunch",label:"Lunch (Target: 35\u201340g protein)"}),
+          React.createElement(MealTracker, {meal:"preworkout",label:"Pre-gym snack",showProtein:false})
+        ));
+        modeContent.push(React.createElement(WaterTracker, {key:"wow"}));
+      }
+
+      if (day.activeMode === "study") {
+        modeContent.push(React.createElement("div", {key:"st",className:"card",style:cardStyle},
+          React.createElement("p", {style:sectionTitle(COLORS.teal)}, "Study Mode \u2014 Ultradian Cycles"),
+          React.createElement(CheckItem, {checked:day.study.ultradianCycle1,label:"Ultradian cycle #1 (90 min)",sub:"Deep focus session",onToggle:()=>toggleCheck("study","ultradianCycle1"),color:COLORS.teal}),
+          React.createElement(CheckItem, {checked:day.study.ultradianCycle2,label:"Ultradian cycle #2 (90 min)",sub:"Second focus session",onToggle:()=>toggleCheck("study","ultradianCycle2"),color:COLORS.teal}),
+          React.createElement(CheckItem, {checked:day.study.ultradianCycle3,label:"Ultradian cycle #3 (90 min)",sub:"Afternoon session",onToggle:()=>toggleCheck("study","ultradianCycle3"),color:COLORS.teal}),
+          React.createElement(CheckItem, {checked:day.study.binaural40hz,label:"Used 40Hz binaural beats",sub:"If struggling to focus",onToggle:()=>toggleCheck("study","binaural40hz"),color:COLORS.teal}),
+          React.createElement(CheckItem, {checked:day.study.hydration,label:"Hydrated during study",sub:"500ml per session",onToggle:()=>toggleCheck("study","hydration"),color:COLORS.teal})
+        ));
+        modeContent.push(React.createElement("div", {key:"stm",className:"card",style:cardStyle},
+          React.createElement("p", {style:sectionTitle(COLORS.amber)}, "Meals"),
+          React.createElement(MealTracker, {meal:"lunch",label:"Lunch (Target: 35\u201340g protein)"}),
+          React.createElement(MealTracker, {meal:"preworkout",label:"Pre-gym snack",showProtein:false})
+        ));
+        modeContent.push(React.createElement(WaterTracker, {key:"stw"}));
+      }
+
+      if (day.activeMode === "gym") {
+        modeContent.push(React.createElement("div", {key:"gt",className:"card",style:cardStyle},
+          React.createElement("p", {style:sectionTitle(COLORS.red)}, "Workout Type"),
+          React.createElement("div", {style:{display:"flex",gap:8}},
+            ["Push","Pull","Legs","Run"].map(type =>
+              React.createElement("button", {key:type, onClick:()=>saveDay({...day,gym:{...day.gym,type,exercises:type==="Push"?PUSH_EX.map(e=>({name:e,done:false})):type==="Pull"?PULL_EX.map(e=>({name:e,done:false})):type==="Legs"?LEG_EX.map(e=>({name:e,done:false})):[]}}),style:{
+                flex:1,padding:"10px 4px",borderRadius:10,border:"none",cursor:"pointer",
+                background:day.gym.type===type?COLORS.red:COLORS.grayBg,
+                color:day.gym.type===type?COLORS.white:COLORS.dark,
+                fontWeight:700,fontSize:13,transition:"all 0.2s"
+              }}, type)
+            )
+          )
+        ));
+
+        if (day.gym.type && day.gym.type !== "Run") {
+          modeContent.push(React.createElement("div", {key:"gex",className:"card",style:cardStyle},
+            React.createElement("p", {style:sectionTitle(COLORS.red)}, "Exercises \u2014 "+day.gym.type+" Day"),
+            day.gym.exercises.map((ex,i) =>
+              React.createElement(CheckItem, {key:i,checked:ex.done,label:ex.name,
+                onToggle:()=>{
+                  const exs=[...day.gym.exercises]; exs[i]={...exs[i],done:!exs[i].done};
+                  const allDone=exs.every(e=>e.done);
+                  saveDay({...day,gym:{...day.gym,exercises:exs,completed:allDone}});
+                  if(!ex.done) triggerConfetti();
+                },color:COLORS.red})
+            )
+          ));
+        }
+
+        modeContent.push(React.createElement("div", {key:"gc",className:"card",style:cardStyle},
+          React.createElement("p", {style:sectionTitle(COLORS.red)}, "Cardio Finisher"),
+          React.createElement(CheckItem, {checked:day.gym.cardio,label:"Cardio completed",
+            sub:day.gym.type==="Run"?"30\u201345 min city run":"10\u201315 min incline walk or HIIT",
+            onToggle:()=>{
+              const nc=!day.gym.cardio;
+              const completed=day.gym.type==="Run"?nc:(day.gym.exercises.every(e=>e.done)&&nc);
+              saveDay({...day,gym:{...day.gym,cardio:nc,completed:day.gym.type==="Run"?nc:completed}});
+              if(nc) triggerConfetti();
+            },color:COLORS.red})
+        ));
+
+        modeContent.push(React.createElement("div", {key:"gpw",className:"card",style:cardStyle},
+          React.createElement("p", {style:sectionTitle(COLORS.amber)}, "Post-Workout"),
+          React.createElement(MealTracker, {meal:"postworkout",label:"Post-gym whey shake (30g)"})
+        ));
+
+        if (day.gym.completed) {
+          modeContent.push(React.createElement("div", {key:"gd",className:"card",style:{...cardStyle,background:`linear-gradient(135deg, ${COLORS.teal}, ${COLORS.tealDark})`,textAlign:"center",marginBottom:40}},
+            React.createElement("span", {style:{fontSize:48}}, "\uD83C\uDFC6"),
+            React.createElement("p", {style:{color:COLORS.amber,fontSize:20,fontWeight:800,margin:"8px 0 4px"}}, "WORKOUT COMPLETE!"),
+            React.createElement("p", {style:{color:"rgba(255,255,255,0.7)",fontSize:13}}, "Another day closer to 67 kg. You showed up.")
+          ));
+        }
+      }
+
+      if (day.activeMode === "wind") {
+        modeContent.push(React.createElement("div", {key:"wd",className:"card",style:cardStyle},
+          React.createElement("p", {style:sectionTitle(COLORS.tealDark)}, "Wind-Down Protocol"),
+          React.createElement(CheckItem, {checked:day.wind.dimLights,label:"Lights dimmed \u2014 amber only",sub:"No overhead bright lights",onToggle:()=>toggleCheck("wind","dimLights"),color:COLORS.tealDark}),
+          React.createElement(CheckItem, {checked:day.wind.noScreens,label:"Screens dimmed + blue light filter",sub:"Phone & laptop on night mode",onToggle:()=>toggleCheck("wind","noScreens"),color:COLORS.tealDark}),
+          React.createElement(CheckItem, {checked:day.wind.physioSighing,label:"Physiological sighing (3\u20135 reps)",sub:"Double inhale \u2192 long exhale",onToggle:()=>toggleCheck("wind","physioSighing"),color:COLORS.tealDark}),
+          React.createElement(CheckItem, {checked:day.wind.coolRoom,label:"Room cooled (18\u201319\u00B0C)",sub:"1\u20133 degrees cooler than usual",onToggle:()=>toggleCheck("wind","coolRoom"),color:COLORS.tealDark}),
+          React.createElement(CheckItem, {checked:day.wind.bedBy2230,label:"In bed by 22:30",sub:"Target: 7.5\u20138 hours sleep",onToggle:()=>toggleCheck("wind","bedBy2230"),color:COLORS.tealDark})
+        ));
+        modeContent.push(React.createElement("div", {key:"wdd",className:"card",style:cardStyle},
+          React.createElement("p", {style:sectionTitle(COLORS.amber)}, "Dinner"),
+          React.createElement(MealTracker, {meal:"dinner",label:"Dinner (Target: 30\u201335g protein)"})
+        ));
+        modeContent.push(React.createElement("div", {key:"wdr",className:"card",style:cardStyle},
+          React.createElement("p", {style:sectionTitle(COLORS.tealDark)}, "Day Rating"),
+          React.createElement("p", {style:{fontSize:12,fontWeight:600,color:COLORS.gray,margin:"0 0 8px"}}, "Energy Level"),
+          React.createElement("div", {style:{display:"flex",gap:4}},
+            [1,2,3,4,5,6,7,8,9,10].map(n =>
+              React.createElement("button", {key:n,onClick:()=>saveDay({...day,energy:n}),style:{flex:1,padding:"8px 0",borderRadius:8,border:"none",cursor:"pointer",background:day.energy>=n?COLORS.amber:COLORS.grayBg,color:day.energy>=n?COLORS.white:COLORS.gray,fontWeight:700,fontSize:11}}, n)
+            )
+          ),
+          React.createElement("p", {style:{fontSize:12,fontWeight:600,color:COLORS.gray,margin:"14px 0 8px"}}, "Mood"),
+          React.createElement("div", {style:{display:"flex",gap:4}},
+            [1,2,3,4,5,6,7,8,9,10].map(n =>
+              React.createElement("button", {key:n,onClick:()=>saveDay({...day,mood:n}),style:{flex:1,padding:"8px 0",borderRadius:8,border:"none",cursor:"pointer",background:day.mood>=n?COLORS.teal:COLORS.grayBg,color:day.mood>=n?COLORS.white:COLORS.gray,fontWeight:700,fontSize:11}}, n)
+            )
+          ),
+          React.createElement("p", {style:{fontSize:12,fontWeight:600,color:COLORS.gray,margin:"14px 0 8px"}}, "Hours Slept (last night)"),
+          React.createElement("input", {style:{border:`1.5px solid ${COLORS.grayLight}`,borderRadius:10,padding:"10px 14px",fontSize:14,fontFamily:"inherit",outline:"none",width:"100%",boxSizing:"border-box"},type:"number",step:"0.5",placeholder:"e.g., 7.5",value:day.sleep,onChange:e=>saveDay({...day,sleep:e.target.value})})
+        ));
+        modeContent.push(React.createElement("div", {key:"wds",className:"card",style:{...cardStyle,textAlign:"center",marginBottom:40}},
+          React.createElement("p", {style:{fontSize:13,color:COLORS.gray,lineHeight:1.6,margin:0}}, "Sleep is where fat loss and muscle recovery actually happen. Protect it like your gains depend on it \u2014 because they do.")
+        ));
+      }
+
+      return React.createElement("div", null, ...modeContent);
+    }
+
+    // ─── HISTORY VIEW ───
+    function HistoryView() {
+      const [history, setHistory] = useState([]);
+      useEffect(() => {
+        const keys = Storage.list("day:");
+        const entries = keys.slice(-14).map(k => Storage.get(k)).filter(Boolean);
+        setHistory(entries.sort((a,b) => b.date.localeCompare(a.date)));
+      }, []);
+
+      const cardStyle = {background:COLORS.white,borderRadius:16,margin:"12px 16px",padding:20,boxShadow:"0 2px 12px rgba(53,92,92,0.06)"};
+      const tag = (color, text) => React.createElement("span", {style:{display:"inline-block",padding:"4px 10px",borderRadius:20,fontSize:11,fontWeight:700,background:color+"15",color:color,letterSpacing:0.5,marginRight:6}}, text);
+
+      return React.createElement("div", null,
+        React.createElement("div", {style:{background:COLORS.teal,padding:"20px 20px 16px",paddingTop:"calc(20px + env(safe-area-inset-top, 0px))"}},
+          React.createElement("p", {style:{color:COLORS.white,fontSize:13,fontWeight:700,letterSpacing:3,textTransform:"uppercase",margin:0,opacity:0.7}}, "History"),
+          React.createElement("p", {style:{color:COLORS.white,fontSize:22,fontWeight:700,margin:"4px 0 0"}}, "Last 14 Days")
+        ),
+        history.length === 0
+          ? React.createElement("div", {className:"card",style:{...cardStyle,textAlign:"center"}},
+              React.createElement("p", {style:{fontSize:40,margin:"0 0 12px"}}, "\uD83D\uDCCA"),
+              React.createElement("p", {style:{color:COLORS.gray,fontSize:14}}, "No history yet. Start tracking today!")
+            )
+          : history.map((d,i) => {
+              const prot = [d.meals?.breakfast?.protein,d.meals?.lunch?.protein,d.meals?.postworkout?.protein,d.meals?.dinner?.protein].reduce((s,v)=>s+(parseInt(v)||0),0);
+              return React.createElement("div", {key:i,className:"card",style:{...cardStyle,display:"flex",alignItems:"center",gap:14}},
+                React.createElement("div", {style:{flex:1}},
+                  React.createElement("p", {style:{fontSize:14,fontWeight:700,color:COLORS.dark,margin:0}},
+                    new Date(d.date+"T12:00:00").toLocaleDateString("en-DE",{weekday:"short",month:"short",day:"numeric"})
+                  ),
+                  React.createElement("div", {style:{display:"flex",gap:4,marginTop:6,flexWrap:"wrap"}},
+                    d.weight && tag(COLORS.teal, d.weight+" kg"),
+                    tag(COLORS.amber, prot+"g protein"),
+                    tag(COLORS.tealLight, ((d.waterMl||0)/1000).toFixed(1)+"L"),
+                    d.gym?.completed && tag(COLORS.red, "\uD83C\uDFCB\uFE0F "+d.gym.type)
+                  )
+                ),
+                React.createElement("div", {style:{textAlign:"center"}},
+                  d.energy>0 && React.createElement("p", {style:{fontSize:10,color:COLORS.gray,margin:0}}, "\u26A1 "+d.energy+"/10"),
+                  d.mood>0 && React.createElement("p", {style:{fontSize:10,color:COLORS.gray,margin:"2px 0 0"}}, "\uD83D\uDE0A "+d.mood+"/10")
+                )
+              );
+            }),
+        React.createElement("div", {style:{height:80}})
+      );
+    }
+
+    // ─── NAV BAR ───
+    function NavBar() {
+      if (view === "mode") return null;
+      const btn = (v, icon, label) => React.createElement("button", {
+        onClick:()=>setView(v),
+        style:{display:"flex",flexDirection:"column",alignItems:"center",gap:2,background:"none",border:"none",cursor:"pointer",padding:"4px 12px",color:view===v?COLORS.teal:COLORS.gray,fontSize:10,fontWeight:600}
+      }, React.createElement("span",{style:{fontSize:20}},icon), React.createElement("span",null,label));
+
+      return React.createElement("div", {style:{display:"flex",justifyContent:"space-around",padding:"10px 0 14px",paddingBottom:"calc(14px + env(safe-area-inset-bottom, 0px))",background:COLORS.white,borderTop:`1px solid ${COLORS.grayLight}40`,position:"sticky",bottom:0,zIndex:50}},
+        btn("home", "\uD83C\uDFE0", "Today"),
+        btn("history", "\uD83D\uDCCA", "History")
+      );
+    }
+
+    // ─── RENDER ───
+    return React.createElement("div", {style:{fontFamily:"'DM Sans','Segoe UI',sans-serif",background:COLORS.offWhite,minHeight:"100vh",maxWidth:480,margin:"0 auto",position:"relative",overflow:"hidden"}},
+      React.createElement(Confetti),
+      React.createElement(MotivationOverlay),
+      view === "home" && React.createElement(HomeView),
+      view === "mode" && React.createElement(ModeView),
+      view === "history" && React.createElement(HistoryView),
+      React.createElement(NavBar)
+    );
+  }
+
+  ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(App));
+  </script>
+</body>
+</html>

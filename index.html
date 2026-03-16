@@ -163,8 +163,9 @@
 
   // ─── MAIN APP ───
   function App() {
-    const today = new Date().toISOString().split("T")[0];
-    const [day, setDay] = useState(() => Storage.get("day:" + today) || DEFAULT_DAY());
+    const actualToday = new Date().toISOString().split("T")[0];
+    const [selectedDate, setSelectedDate] = useState(actualToday);
+    const [day, setDay] = useState(() => Storage.get("day:" + actualToday) || DEFAULT_DAY());
     const [view, setView] = useState("home");
     const [showMotivation, setShowMotivation] = useState(false);
     const [motivationIndex, setMotivationIndex] = useState(0);
@@ -175,8 +176,29 @@
 
     const saveDay = useCallback((updated) => {
       setDay(updated);
-      Storage.set("day:" + today, updated);
-    }, [today]);
+      Storage.set("day:" + selectedDate, updated);
+    }, [selectedDate]);
+
+    const changeDate = (offset) => {
+      const d = new Date(selectedDate + "T12:00:00");
+      d.setDate(d.getDate() + offset);
+      const newDate = d.toISOString().split("T")[0];
+      if (newDate > actualToday) return; // can't go to future
+      setSelectedDate(newDate);
+      const stored = Storage.get("day:" + newDate);
+      if (stored) { setDay({...DEFAULT_DAY(), ...stored, date: newDate}); }
+      else { setDay({...DEFAULT_DAY(), date: newDate}); }
+    };
+
+    const goToToday = () => {
+      setSelectedDate(actualToday);
+      const stored = Storage.get("day:" + actualToday);
+      if (stored) { setDay({...DEFAULT_DAY(), ...stored, date: actualToday}); }
+      else { setDay({...DEFAULT_DAY(), date: actualToday}); }
+    };
+
+    const isToday = selectedDate === actualToday;
+    const isPast = selectedDate < actualToday;
 
     useEffect(() => {
       if (day.activeMode) {
@@ -459,12 +481,26 @@
 
     // ─── HOME VIEW ───
     function HomeView() {
+      const displayDate = new Date(selectedDate + "T12:00:00");
       return React.createElement("div", null,
         // Header
         React.createElement("div", {style:{background:COLORS.teal,padding:"20px 20px 16px",paddingTop:"calc(20px + env(safe-area-inset-top, 0px))"}},
           React.createElement("p", {style:{color:COLORS.white,fontSize:13,fontWeight:700,letterSpacing:3,textTransform:"uppercase",margin:0,opacity:0.7}}, "Daily Blueprint"),
-          React.createElement("p", {style:{color:COLORS.white,fontSize:22,fontWeight:700,margin:"4px 0 0"}}, new Date().toLocaleDateString("en-DE",{weekday:"long",month:"long",day:"numeric"})),
-          React.createElement("div", {style:{display:"flex",alignItems:"center",gap:10,marginTop:12}},
+          // Date nav row
+          React.createElement("div", {style:{display:"flex",alignItems:"center",justifyContent:"space-between",margin:"6px 0 0"}},
+            React.createElement("button", {onClick:()=>changeDate(-1),style:{background:"rgba(255,255,255,0.15)",border:"none",color:COLORS.white,borderRadius:10,width:38,height:38,fontSize:18,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}, "\u2039"),
+            React.createElement("div", {style:{textAlign:"center",flex:1}},
+              React.createElement("p", {style:{color:COLORS.white,fontSize:20,fontWeight:700,margin:0}}, displayDate.toLocaleDateString("en-DE",{weekday:"long",month:"long",day:"numeric"})),
+              !isToday && React.createElement("button", {onClick:goToToday,style:{background:COLORS.amber,border:"none",color:COLORS.dark,borderRadius:12,padding:"3px 12px",fontSize:11,fontWeight:700,cursor:"pointer",marginTop:4}}, "\u2192 Back to Today")
+            ),
+            React.createElement("button", {onClick:()=>changeDate(1),disabled:isToday,style:{background:isToday?"rgba(255,255,255,0.05)":"rgba(255,255,255,0.15)",border:"none",color:isToday?"rgba(255,255,255,0.2)":COLORS.white,borderRadius:10,width:38,height:38,fontSize:18,cursor:isToday?"default":"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}, "\u203A")
+          ),
+          // Past day banner
+          isPast && React.createElement("div", {style:{background:COLORS.amber+"25",borderRadius:8,padding:"6px 12px",marginTop:10,textAlign:"center"}},
+            React.createElement("span", {style:{color:COLORS.amber,fontSize:12,fontWeight:700}}, "\uD83D\uDCDD Editing past day \u2014 your changes are saved automatically")
+          ),
+          // Progress bar
+          React.createElement("div", {style:{display:"flex",alignItems:"center",gap:10,marginTop:10}},
             React.createElement("div", {style:{flex:1,height:4,background:"rgba(255,255,255,0.15)",borderRadius:2}},
               React.createElement("div", {style:{height:"100%",width:pct+"%",borderRadius:2,background:COLORS.amber,transition:"width 0.5s ease"}})
             ),

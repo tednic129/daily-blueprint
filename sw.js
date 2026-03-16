@@ -1,4 +1,4 @@
-const CACHE_NAME = 'blueprint-v3';
+const CACHE_NAME = 'blueprint-v4';
 const ASSETS = [
   '/tapan-daily-blueprint/',
   '/tapan-daily-blueprint/index.html',

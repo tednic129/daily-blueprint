@@ -168,9 +168,10 @@
     const [view, setView] = useState("home");
     const [showMotivation, setShowMotivation] = useState(false);
     const [motivationIndex, setMotivationIndex] = useState(0);
-    const [modeTimer, setModeTimer] = useState(0);
     const [showConfetti, setShowConfetti] = useState(false);
     const timerRef = useRef(null);
+    const timerCountRef = useRef(0);
+    const timerDisplayRef = useRef(null);
 
     const saveDay = useCallback((updated) => {
       setDay(updated);
@@ -179,8 +180,15 @@
 
     useEffect(() => {
       if (day.activeMode) {
-        timerRef.current = setInterval(() => setModeTimer(t => t + 1), 1000);
-      } else { setModeTimer(0); }
+        timerCountRef.current = 0;
+        timerRef.current = setInterval(() => {
+          timerCountRef.current += 1;
+          if (timerDisplayRef.current) {
+            const s = timerCountRef.current;
+            timerDisplayRef.current.textContent = String(Math.floor(s/3600)).padStart(2,"0")+":"+String(Math.floor((s%3600)/60)).padStart(2,"0")+":"+String(s%60).padStart(2,"0");
+          }
+        }, 1000);
+      } else { timerCountRef.current = 0; }
       return () => clearInterval(timerRef.current);
     }, [day.activeMode]);
 
@@ -207,7 +215,7 @@
         saveDay({...day, gymMotivationSeen: true});
         return;
       }
-      setModeTimer(0);
+      timerCountRef.current = 0;
       saveDay({...day, activeMode: modeId, modeStartTime: Date.now()});
       setView("mode");
     };
@@ -221,7 +229,7 @@
 
     const confirmGym = () => {
       setShowMotivation(false);
-      setModeTimer(0);
+      timerCountRef.current = 0;
       saveDay({...day, activeMode: "gym", modeStartTime: Date.now(), gymMotivationSeen: true});
       setView("mode");
     };
@@ -356,6 +364,99 @@
       );
     }
 
+    // ─── PROGRESS DASHBOARD ───
+    function ProgressDashboard() {
+      const startWeight = 96.8;
+      const targetWeight = 67.0;
+      const totalToLose = startWeight - targetWeight; // 29.8
+      const currentWeight = parseFloat(day.weight) || startWeight;
+      const lostSoFar = Math.max(0, startWeight - currentWeight);
+      const overallPct = Math.min(100, Math.round((lostSoFar / totalToLose) * 100));
+      const remaining = Math.max(0, currentWeight - targetWeight);
+
+      // Get history for weekly average
+      const historyKeys = Storage.list("day:");
+      const last7 = historyKeys.slice(-7).map(k => Storage.get(k)).filter(d => d && d.weight);
+      const weekAvg = last7.length > 0 ? (last7.reduce((s,d) => s + parseFloat(d.weight), 0) / last7.length).toFixed(1) : null;
+      const daysTracked = historyKeys.length;
+
+      // Target metrics from InBody
+      const targetPBF = 15;
+      const currentPBF = 41.0;
+      const startBMI = 36.0;
+      const currentBMI = currentWeight / (1.64 * 1.64);
+      const targetBMI = targetWeight / (1.64 * 1.64);
+
+      const cardStyle = {background:COLORS.white,borderRadius:16,margin:"12px 16px",padding:20,boxShadow:"0 2px 12px rgba(53,92,92,0.06)"};
+      const sTitle = (c) => ({fontSize:11,fontWeight:800,letterSpacing:2.5,textTransform:"uppercase",color:c,margin:"0 0 14px",paddingBottom:8,borderBottom:`2px solid ${c}20`});
+
+      // SVG arc progress
+      const arcRadius = 70;
+      const arcStroke = 10;
+      const arcCirc = Math.PI * arcRadius;
+      const arcOffset = arcCirc - (arcCirc * overallPct / 100);
+
+      return React.createElement("div", {className:"card",style:cardStyle},
+        React.createElement("p", {style:sTitle(COLORS.red)}, "Overall Goal Progress"),
+
+        // Arc + center number
+        React.createElement("div", {style:{display:"flex",justifyContent:"center",margin:"4px 0 16px"}},
+          React.createElement("svg", {width:170,height:100,viewBox:"0 0 170 100"},
+            // Background arc
+            React.createElement("path", {
+              d:"M 15 90 A 70 70 0 0 1 155 90",
+              fill:"none",stroke:COLORS.grayLight+"60",strokeWidth:arcStroke,strokeLinecap:"round"
+            }),
+            // Progress arc
+            React.createElement("path", {
+              d:"M 15 90 A 70 70 0 0 1 155 90",
+              fill:"none",stroke:overallPct>=80?COLORS.teal:overallPct>=40?COLORS.amber:COLORS.red,
+              strokeWidth:arcStroke,strokeLinecap:"round",
+              strokeDasharray:arcCirc,strokeDashoffset:arcOffset,
+              style:{transition:"stroke-dashoffset 0.8s ease"}
+            }),
+            // Center text
+            React.createElement("text", {x:85,y:65,textAnchor:"middle",style:{fontSize:28,fontWeight:800,fill:COLORS.dark,fontFamily:"'DM Sans',sans-serif"}}, overallPct+"%"),
+            React.createElement("text", {x:85,y:82,textAnchor:"middle",style:{fontSize:10,fontWeight:600,fill:COLORS.gray,fontFamily:"'DM Sans',sans-serif"}}, "to target")
+          )
+        ),
+
+        // Key metrics grid
+        React.createElement("div", {style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}},
+          // Current weight
+          React.createElement("div", {style:{background:COLORS.cream,borderRadius:12,padding:12,textAlign:"center"}},
+            React.createElement("p", {style:{fontSize:10,fontWeight:700,color:COLORS.gray,textTransform:"uppercase",letterSpacing:1,margin:0}}, "Current"),
+            React.createElement("p", {style:{fontSize:22,fontWeight:800,color:COLORS.dark,margin:"4px 0 0"}}, (currentWeight).toFixed(1)+" kg"),
+            weekAvg && React.createElement("p", {style:{fontSize:10,color:COLORS.gray,margin:"2px 0 0"}}, "7-day avg: "+weekAvg+" kg")
+          ),
+          // Target weight
+          React.createElement("div", {style:{background:COLORS.cream,borderRadius:12,padding:12,textAlign:"center"}},
+            React.createElement("p", {style:{fontSize:10,fontWeight:700,color:COLORS.gray,textTransform:"uppercase",letterSpacing:1,margin:0}}, "Target"),
+            React.createElement("p", {style:{fontSize:22,fontWeight:800,color:COLORS.teal,margin:"4px 0 0"}}, targetWeight.toFixed(1)+" kg"),
+            React.createElement("p", {style:{fontSize:10,color:COLORS.gray,margin:"2px 0 0"}}, remaining.toFixed(1)+" kg to go")
+          ),
+          // Fat lost
+          React.createElement("div", {style:{background:COLORS.cream,borderRadius:12,padding:12,textAlign:"center"}},
+            React.createElement("p", {style:{fontSize:10,fontWeight:700,color:COLORS.gray,textTransform:"uppercase",letterSpacing:1,margin:0}}, "Fat Lost"),
+            React.createElement("p", {style:{fontSize:22,fontWeight:800,color:lostSoFar>0?COLORS.amber:COLORS.gray,margin:"4px 0 0"}}, lostSoFar.toFixed(1)+" kg"),
+            React.createElement("p", {style:{fontSize:10,color:COLORS.gray,margin:"2px 0 0"}}, "of "+totalToLose.toFixed(1)+" kg goal")
+          ),
+          // BMI
+          React.createElement("div", {style:{background:COLORS.cream,borderRadius:12,padding:12,textAlign:"center"}},
+            React.createElement("p", {style:{fontSize:10,fontWeight:700,color:COLORS.gray,textTransform:"uppercase",letterSpacing:1,margin:0}}, "BMI"),
+            React.createElement("p", {style:{fontSize:22,fontWeight:800,color:currentBMI<=25?COLORS.teal:currentBMI<=30?COLORS.amber:COLORS.red,margin:"4px 0 0"}}, currentBMI.toFixed(1)),
+            React.createElement("p", {style:{fontSize:10,color:COLORS.gray,margin:"2px 0 0"}}, "target: "+targetBMI.toFixed(1))
+          )
+        ),
+
+        // Days tracked
+        daysTracked > 0 && React.createElement("div", {style:{display:"flex",justifyContent:"center",gap:20,marginTop:14,padding:"10px 0 0",borderTop:`1px solid ${COLORS.grayLight}30`}},
+          React.createElement("span", {style:{fontSize:11,color:COLORS.gray,fontWeight:600}}, "\uD83D\uDCC5 "+daysTracked+" day"+(daysTracked!==1?"s":"")+" tracked"),
+          React.createElement("span", {style:{fontSize:11,color:COLORS.gray,fontWeight:600}}, "\uD83C\uDFAF PBF: "+currentPBF+"% \u2192 "+targetPBF+"%")
+        )
+      );
+    }
+
     // ─── HOME VIEW ───
     function HomeView() {
       return React.createElement("div", null,
@@ -376,6 +477,8 @@
           React.createElement(StatCard, {value:(day.waterMl/1000).toFixed(1),unit:"L",label:"Water",color:day.waterMl>=3000?COLORS.teal:COLORS.tealLight,progress:day.waterMl,max:3500}),
           React.createElement(StatCard, {value:day.gym.completed?"\u2713":"\u2014",unit:"",label:"Gym",color:day.gym.completed?COLORS.teal:COLORS.gray})
         ),
+        // Overall Progress Dashboard
+        React.createElement(ProgressDashboard),
         // Mode Selector
         React.createElement("div", {className:"card",style:{background:COLORS.white,borderRadius:16,margin:"12px 16px",padding:20,boxShadow:"0 2px 12px rgba(53,92,92,0.06)"}},
           React.createElement("p", {style:{fontSize:11,fontWeight:800,letterSpacing:2.5,textTransform:"uppercase",color:COLORS.teal,margin:"0 0 14px",paddingBottom:8,borderBottom:`2px solid ${COLORS.teal}20`}}, "Enter A Mode"),
@@ -432,7 +535,7 @@
         React.createElement("div", {style:{textAlign:"center",marginTop:8}},
           React.createElement("span", {style:{fontSize:40}}, mode.icon),
           React.createElement("p", {style:{color:COLORS.white,fontSize:20,fontWeight:800,margin:"4px 0 0",letterSpacing:1}}, mode.label+" Mode"),
-          React.createElement("p", {style:{fontFamily:"'JetBrains Mono',monospace",fontSize:36,fontWeight:700,color:COLORS.white,textAlign:"center",margin:"8px 0 0",letterSpacing:2}}, fmt(modeTimer))
+          React.createElement("p", {ref:timerDisplayRef,style:{fontFamily:"'JetBrains Mono',monospace",fontSize:36,fontWeight:700,color:COLORS.white,textAlign:"center",margin:"8px 0 0",letterSpacing:2}}, "00:00:00")
         )
       ));
 

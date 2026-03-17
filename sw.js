@@ -1,10 +1,10 @@
-const CACHE_NAME = 'blueprint-v4';
+const CACHE_NAME = 'blueprint-v5';
 const ASSETS = [
-  '/tapan-daily-blueprint/',
-  '/tapan-daily-blueprint/index.html',
-  '/tapan-daily-blueprint/manifest.json',
-  '/tapan-daily-blueprint/icons/icon-192x192.png',
-  '/tapan-daily-blueprint/icons/icon-512x512.png',
+  '/daily-blueprint/',
+  '/daily-blueprint/index.html',
+  '/daily-blueprint/manifest.json',
+  '/daily-blueprint/icons/icon-192x192.png',
+  '/daily-blueprint/icons/icon-512x512.png',
   'https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@700&display=swap'
 ];
 
@@ -33,7 +33,7 @@ self.addEventListener('fetch', (e) => {
         return response;
       }).catch(() => {
         if (e.request.destination === 'document') {
-          return caches.match('/tapan-daily-blueprint/index.html');
+          return caches.match('/daily-blueprint/index.html');
         }
       });
     })
